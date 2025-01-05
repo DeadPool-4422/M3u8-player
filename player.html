@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M3U8 AES-128 Decryption Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        #video-container {
+            max-width: 800px;
+            margin: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>M3U8 AES-128 Decryption Player</h1>
+    <div id="video-container">
+        <video id="player" controls width="100%" height="auto">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+    <input type="text" id="stream-url" placeholder="Enter M3U8 URL" style="width: 100%; padding: 10px; margin: 10px 0;">
+    <button onclick="loadStream()">Load Stream</button>
+
+    <script>
+        async function fetchDecryptionKey(keyUri) {
+            try {
+                const response = await fetch(keyUri);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch decryption key: ${response.statusText}`);
+                }
+                return await response.arrayBuffer();
+            } catch (error) {
+                console.error("Error fetching decryption key:", error);
+                alert("Failed to fetch decryption key.");
+                return null;
+            }
+        }
+
+        async function loadStream() {
+            const urlInput = document.getElementById("stream-url").value;
+            if (!urlInput) {
+                alert("Please enter a valid M3U8 URL.");
+                return;
+            }
+
+            try {
+                const m3u8Response = await fetch(urlInput);
+                if (!m3u8Response.ok) {
+                    throw new Error(`Failed to fetch M3U8: ${m3u8Response.statusText}`);
+                }
+
+                const m3u8Content = await m3u8Response.text();
+                const keyUriMatch = m3u8Content.match(/#EXT-X-KEY:METHOD=AES-128,URI="([^"]+)"/);
+
+                if (keyUriMatch) {
+                    const keyUri = keyUriMatch[1];
+                    console.log("Decryption key URI:", keyUri);
+
+                    const decryptionKey = await fetchDecryptionKey(keyUri);
+                    if (!decryptionKey) return;
+
+                    console.log("Decryption key fetched:", new Uint8Array(decryptionKey));
+
+                    // Load the stream into the player using HLS.js
+                    const video = document.getElementById("player");
+                    if (Hls.isSupported()) {
+                        const hls = new Hls({
+                            xhrSetup: function(xhr, url) {
+                                if (url.endsWith(".ts")) {
+                                    xhr.responseType = "arraybuffer";
+                                }
+                            }
+                        });
+                        hls.loadSource(urlInput);
+                        hls.attachMedia(video);
+                        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                            video.play();
+                        });
+                    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+                        video.src = urlInput;
+                        video.addEventListener("loadedmetadata", function() {
+                            video.play();
+                        });
+                    } else {
+                        alert("HLS is not supported in your browser.");
+                    }
+                } else {
+                    alert("No decryption key found in M3U8 file.");
+                }
+            } catch (error) {
+                console.error("Error loading stream:", error);
+                alert("Failed to load stream.");
+            }
+        }
+    </script>
+</body>
+</html>
